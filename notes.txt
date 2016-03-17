@@ -1,0 +1,42 @@
+env->SetStart
+	planner->set_start
+
+env->SetGoal
+	planner->set_goal
+
+change cell costs
+
+vector<int> solution_stateIDs
+
+planner->replan(allocated_time_, &solution_stateIDs, &solution_cost)
+
+vector<EnvNAVXYTHETALAT3Dpt_t> sbpl_plan
+
+env->ConvertStateIDPathintoXYThetaPath(&solution_stateIDs, &sbpl_path)
+
+
+
+
+
+
+
+EnvNAVXYTHETALAT3Dpt_t s(
+    real_start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(),
+    real_start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(),
+    theta_start);
+
+
+
+
+
+
+pose.pose.position.x = sbpl_path[i].x + costmap_ros_->getCostmap()->getOriginX();
+pose.pose.position.y = sbpl_path[i].y + costmap_ros_->getCostmap()->getOriginY();
+pose.pose.position.z = real_start.pose.position.z;
+
+tf::Quaternion temp;
+temp.setRPY(0,0,sbpl_path[i].theta);
+pose.pose.orientation.x = temp.getX();
+pose.pose.orientation.y = temp.getY();
+pose.pose.orientation.z = temp.getZ();
+pose.pose.orientation.w = temp.getW();
