@@ -85,6 +85,10 @@ private:
   unsigned char inscribed_inflated_obstacle_;
   unsigned char sbpl_cost_multiplier_;
 
+  geometry_msgs::PoseStamped last_start_;
+  geometry_msgs::PoseStamped last_goal_;
+  std::vector<geometry_msgs::PoseStamped> last_plan_;
+  double last_cost_;
 
   costmap_2d::Costmap2DROS* costmap_ros_; /**< manages the cost map for us */
 
