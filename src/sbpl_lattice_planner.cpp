@@ -198,7 +198,7 @@ void SBPLLatticePlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     plan_pub_ = private_nh.advertise<nav_msgs::Path>("plan", 1);
     stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
 
-    last_cost_ = -1;
+    has_prev_ = false;
 
     initialized_ = true;
   }
@@ -247,7 +247,16 @@ int SBPLLatticePlanner::checkCost(std::vector<geometry_msgs::PoseStamped> _plan)
     geometry_msgs::PoseStamped pose_i = _plan.at(i);
     int cell_i_x = costmap_ros_->getCostmap()->cellDistance(pose_i.pose.position.x - costmap_ros_->getCostmap()->getOriginX());
     int cell_i_y = costmap_ros_->getCostmap()->cellDistance(pose_i.pose.position.y - costmap_ros_->getCostmap()->getOriginY());
-    cost += (int)costmap_ros_->getCostmap()->getCost(cell_i_x, cell_i_y);
+    int cost_i = (int)costmap_ros_->getCostmap()->getCost(cell_i_x, cell_i_y);
+    if(cost_i > 240)
+    {
+      ROS_DEBUG("Path Invalid Now!");
+      return -1;
+    }
+    else
+    {
+      cost += cost_i;
+    }
   }
   return cost;
 }
@@ -260,6 +269,7 @@ bool SBPLLatticePlanner::compareGoals(geometry_msgs::PoseStamped _last_goal, geo
 
   double goal_th = 2 * atan2(_new_goal.pose.orientation.z, _new_goal.pose.orientation.w);
   double last_goal_th = 2 * atan2(_last_goal.pose.orientation.z, _last_goal.pose.orientation.w);
+
   double goal_dx = fabs(_last_goal.pose.position.x - _new_goal.pose.position.x);
   double goal_dy = fabs(_last_goal.pose.position.y - _new_goal.pose.position.y);
   double goal_dt = fabs(last_goal_th - goal_th);
@@ -270,29 +280,47 @@ bool SBPLLatticePlanner::compareGoals(geometry_msgs::PoseStamped _last_goal, geo
 
   if(goal_dt < goal_t_tol && goal_dx < goal_x_tol && goal_dy < goal_y_tol)
   {
-    return false;
+    return true;
   }
-  return true;
+  ROS_DEBUG("Goal Point Changed!");
+  return false;
 }
 
-bool SBPLLatticePlanner::compareStarts(geometry_msgs::PoseStamped _last_start, geometry_msgs::PoseStamped _new_start)
+bool SBPLLatticePlanner::compareStartToPath(geometry_msgs::PoseStamped _last_start)
 {
   double start_x_tol = 0.4;
   double start_y_tol = 0.4;
   double start_t_tol = PI/4;
 
-  double start_th = 2 * atan2(_new_start.pose.orientation.z, _new_start.pose.orientation.w);
-  double last_start_th = 2 * atan2(_last_start.pose.orientation.z, _last_start.pose.orientation.w);
-  double start_dx = fabs(_last_start.pose.position.x - _new_start.pose.position.x);
-  double start_dy = fabs(_last_start.pose.position.y - _new_start.pose.position.y);
-  double start_dt = fabs(last_start_th - start_th);
-  if(start_dt > PI)
-  {
-    start_dt = 2*PI - start_dt;
-  }
+  int indx = -1;
+  double dist = 0.0;
+  double start_th = 2 * atan2(_last_start.pose.orientation.z, _last_start.pose.orientation.w);
 
-  if(start_dt < start_t_tol && start_dx < start_x_tol && start_dy < start_y_tol)
+  for(int i = 0; i < last_plan_.size(); i++)
   {
+    double plani_th = 2 * atan2(last_plan_.at(i).pose.orientation.z, last_plan_.at(i).pose.orientation.w);
+
+    double start_dx = fabs(last_plan_.at(i).pose.position.x - _last_start.pose.position.x);
+    double start_dy = fabs(last_plan_.at(i).pose.position.y - _last_start.pose.position.y);
+    double start_dt = fabs(plani_th - start_th);
+    if(start_dt > PI)
+    {
+      start_dt = 2*PI - start_dt;
+    }
+    // Make sure that point is 'close enough'
+    if(start_dt < start_t_tol && start_dx < start_x_tol && start_dy < start_y_tol)
+    {
+      double temp_dist = start_dx*start_dx + start_dy*start_dy;
+      if(indx < 0 || temp_dist < dist)
+      {
+        indx = i;
+        dist = temp_dist;
+      }
+    }
+  }
+  if(indx < 0)
+  {
+    ROS_DEBUG("Too Far Off The Path!");
     return false;
   }
   return true;
@@ -308,86 +336,29 @@ bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
 
   plan.clear();
 
-  //////////////////////////////////////////////
-  geometry_msgs::PoseStamped real_start = start;
+  // //////////////////////////////////////////////
 
-  if(last_cost_ >= 0)
+  // If true then need to compare costs
+  bool comparePaths;
+  if(has_prev_)
   {
-    // If the start is close to a point on the path and the goal is basically the same, then use that point as the start
-    double start_th = 2 * atan2(start.pose.orientation.z, start.pose.orientation.w);
-    double last_start_th = 2 * atan2(last_start_.pose.orientation.z, last_start_.pose.orientation.w);
-    double goal_th = 2 * atan2(goal.pose.orientation.z, goal.pose.orientation.w);
-    double last_goal_th = 2 * atan2(last_goal_.pose.orientation.z, last_goal_.pose.orientation.w);
-    double plan0_th = 2 * atan2(last_plan_.at(0).pose.orientation.z, last_plan_.at(0).pose.orientation.w);
-
-    ROS_INFO("start(%.4f %.4f %.4f)", start.pose.position.x, start.pose.position.y, start_th);
-    ROS_INFO("last_start(%.4f %.4f %.4f)", last_start_.pose.position.x, last_start_.pose.position.y, last_start_th);
-    ROS_INFO("goal(%.4f %.4f %.4f)", goal.pose.position.x, goal.pose.position.y, goal_th);
-    ROS_INFO("last_goal(%.4f %.4f %.4f)", last_goal_.pose.position.x, last_goal_.pose.position.y, last_goal_th);
-    ROS_INFO("plan0(%.4f %.4f %.4f)", last_plan_.at(0).pose.position.x, last_plan_.at(0).pose.position.y, plan0_th);
-
-    double goal_x_tol = 0.1;
-    double goal_y_tol = 0.1;
-    double goal_t_tol = PI/8;
-    double start_x_tol = 0.4;
-    double start_y_tol = 0.4;
-    double start_t_tol = PI/4;
-
-    // Check if the goal is the same
-    double goal_dx = fabs(last_goal_.pose.position.x - goal.pose.position.x);
-    double goal_dy = fabs(last_goal_.pose.position.y - goal.pose.position.y);
-    double goal_dt = fabs(last_goal_th - goal_th);
-
-    if(goal_dt > PI)
-    {
-      goal_dt = 2*PI - goal_dt;
-    }
-
-    if(goal_dt < goal_t_tol && goal_dx < goal_x_tol && goal_dy < goal_y_tol)
-    {
-      // Find the closest point in the last plan to the current start
-      int indx = -1;
-      double dist = 0.0;
-      for(int i = 0; i < last_plan_.size(); i++)
-      {
-        double plani_th = 2 * atan2(last_plan_.at(i).pose.orientation.z, last_plan_.at(i).pose.orientation.w);
-        double start_dx = fabs(last_plan_.at(i).pose.position.x - start.pose.position.x);
-        double start_dy = fabs(last_plan_.at(i).pose.position.y - start.pose.position.y);
-        double start_dt = fabs(plani_th - start_th);
-        if(start_dt > PI)
-        {
-          start_dt = 2*PI - start_dt;
-        }
-        // Make sure that point is 'close enough'
-        if(start_dt < start_t_tol && start_dx < start_x_tol && start_dy < start_y_tol)
-        {
-          double temp_dist = start_dx*start_dx + start_dy*start_dy;
-          if(indx < 0 || temp_dist < dist)
-          {
-            indx = i;
-            dist = temp_dist;
-          }
-        }
-      } 
-      // Change the start and goal
-      if(indx >= 0)
-      {
-        real_start.pose = last_plan_.at(indx).pose;
-        double real_start_th = 2 * atan2(last_plan_.at(indx).pose.orientation.z, last_plan_.at(indx).pose.orientation.w);
-        ROS_INFO("real_start(%.4f %.4f %.4f)", real_start.pose.position.x, real_start.pose.position.y, real_start_th);
-      }
-    }
+    comparePaths = compareGoals(last_goal_, goal) && compareStartToPath(last_start_); 
   }
-  //////////////////////////////////////////////
+  else
+  {
+    comparePaths = false;
+    has_prev_ = true;
+  }
 
+  // //////////////////////////////////////////////
 
   ROS_INFO("[sbpl_lattice_planner] getting start point (%g,%g) goal point (%g,%g)",
-           real_start.pose.position.x, real_start.pose.position.y,goal.pose.position.x, goal.pose.position.y);
-  double theta_start = 2 * atan2(real_start.pose.orientation.z, real_start.pose.orientation.w);
+           start.pose.position.x, start.pose.position.y,goal.pose.position.x, goal.pose.position.y);
+  double theta_start = 2 * atan2(start.pose.orientation.z, start.pose.orientation.w);
   double theta_goal = 2 * atan2(goal.pose.orientation.z, goal.pose.orientation.w);
 
   try{
-    int ret = env_->SetStart(real_start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), real_start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
+    int ret = env_->SetStart(start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(), start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(), theta_start);
     if(ret < 0 || planner_->set_start(ret) == 0){
       ROS_ERROR("ERROR: failed to set start state\n");
       return false;
@@ -474,7 +445,7 @@ bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
       ROS_DEBUG("Solution is found\n");
     else{
       ROS_INFO("Solution not found\n");
-      publishStats(solution_cost, 0, real_start, goal);
+      publishStats(solution_cost, 0, start, goal);
       return false;
     }
   }
@@ -496,8 +467,8 @@ bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
   // if the plan has zero points, add a single point to make move_base happy
   if( sbpl_path.size() == 0 ) {
     EnvNAVXYTHETALAT3Dpt_t s(
-        real_start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(),
-        real_start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(),
+        start.pose.position.x - costmap_ros_->getCostmap()->getOriginX(),
+        start.pose.position.y - costmap_ros_->getCostmap()->getOriginY(),
         theta_start);
     sbpl_path.push_back(s);
   }
@@ -517,7 +488,7 @@ bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
 
     pose.pose.position.x = sbpl_path[i].x + costmap_ros_->getCostmap()->getOriginX();
     pose.pose.position.y = sbpl_path[i].y + costmap_ros_->getCostmap()->getOriginY();
-    pose.pose.position.z = real_start.pose.position.z;
+    pose.pose.position.z = start.pose.position.z;
 
     tf::Quaternion temp;
     temp.setRPY(0,0,sbpl_path[i].theta);
@@ -533,33 +504,44 @@ bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
     gui_path.poses[i].pose.position.z = plan[i].pose.position.z;
   }
 
-  // //Only publish if new start is much different or new goal is much different or old path is now invalid or new plan cost 20% less
-  // bool publish_new = false;
+  // //////////////////////////////////////////////
+  if(comparePaths)
+  {
+    if(solution_cost > 0)
+    {
+      int old_path_cost = checkCost(last_plan_);
+      int new_plan_cost = checkCost(plan);
+      if(new_plan_cost >= 0)
+      {
+        if(old_path_cost < 0 || new_plan_cost*1.2 < old_path_cost)
+        {
+          ROS_DEBUG("New plan is cheaper or old plan is now invalid");
+          plan_pub_.publish(gui_path);
+          publishStats(solution_cost, sbpl_path.size(), start, goal);
+        }
+      }
+      else
+      {
+        publishStats(solution_cost, sbpl_path.size(), start, goal);
+      }
+    }
+    else
+    {
+      publishStats(solution_cost, sbpl_path.size(), start, goal);
+    }
+  }
+  else
+  {
+    plan_pub_.publish(gui_path);
+    publishStats(solution_cost, sbpl_path.size(), start, goal);
+  }
 
-  // if(last_cost_ >= 0)
-  // {
+  // //////////////////////////////////////////////
 
-  // }
-  // else
-  // {
-  //   publish_new = true;
-  // }
-
-  // if(publish_new)
-  // {
-  //   plan_pub_.publish(gui_path);
-  //   publishStats(solution_cost, sbpl_path.size(), start, goal);
-  //   last_start_ = start;
-  //   last_goal_ = goal;
-  //   last_cost_ = solution_cost;
-  //   last_plan_ = plan;
-  // }
-
-  plan_pub_.publish(gui_path);
-  publishStats(solution_cost, sbpl_path.size(), real_start, goal);
-  last_start_ = real_start;
+  // plan_pub_.publish(gui_path);
+  // publishStats(solution_cost, sbpl_path.size(), start, goal);
+  last_start_ = start;
   last_goal_ = goal;
-  last_cost_ = solution_cost;
   last_plan_ = plan;
 
   return true;

@@ -50,7 +50,7 @@ public:
    * @param _plan The vector of PoseStamped objects
    * @return Return the cost of the path (according to costmap_ros_)
    */
-  int SBPLLatticePlanner::checkCost(std::vector<geometry_msgs::PoseStamped> _plan);
+  int checkCost(std::vector<geometry_msgs::PoseStamped> _plan);
 
 
   /**
@@ -59,7 +59,7 @@ public:
    * @param
    * @return
    */
-  bool SBPLLatticePlanner::compareGoals(geometry_msgs::PoseStamped _last_goal, geometry_msgs::PoseStamped _new_goal);
+  bool compareGoals(geometry_msgs::PoseStamped _last_goal, geometry_msgs::PoseStamped _new_goal);
 
 
   /**
@@ -68,7 +68,7 @@ public:
    * @param
    * @return
    */
-  bool SBPLLatticePlanner::compareStarts(geometry_msgs::PoseStamped _last_start, geometry_msgs::PoseStamped _new_start);
+  bool compareStartToPath(geometry_msgs::PoseStamped _last_start);
   
   /**
    * @brief Given a goal pose in the world, compute a plan
@@ -113,7 +113,7 @@ private:
   geometry_msgs::PoseStamped last_start_;
   geometry_msgs::PoseStamped last_goal_;
   std::vector<geometry_msgs::PoseStamped> last_plan_;
-  double last_cost_;
+  bool has_prev_;
 
   costmap_2d::Costmap2DROS* costmap_ros_; /**< manages the cost map for us */
 

@@ -16,6 +16,3 @@
 
 
 // Compare costs of the two paths
-
-
-
