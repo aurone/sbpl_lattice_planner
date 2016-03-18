@@ -42,8 +42,33 @@ public:
    * @param  name The name of this planner
    * @param  costmap_ros A pointer to the ROS wrapper of the costmap to use
    */
-  virtual void initialize(std::string name, 
-                          costmap_2d::Costmap2DROS* costmap_ros);
+  virtual void initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros);
+
+
+  /**
+   * @brief Given a vector of PoseStamped compute the cost
+   * @param _plan The vector of PoseStamped objects
+   * @return Return the cost of the path (according to costmap_ros_)
+   */
+  int SBPLLatticePlanner::checkCost(std::vector<geometry_msgs::PoseStamped> _plan);
+
+
+  /**
+   * @brief
+   * @param
+   * @param
+   * @return
+   */
+  bool SBPLLatticePlanner::compareGoals(geometry_msgs::PoseStamped _last_goal, geometry_msgs::PoseStamped _new_goal);
+
+
+  /**
+   * @brief
+   * @param
+   * @param
+   * @return
+   */
+  bool SBPLLatticePlanner::compareStarts(geometry_msgs::PoseStamped _last_start, geometry_msgs::PoseStamped _new_start);
   
   /**
    * @brief Given a goal pose in the world, compute a plan

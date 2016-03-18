@@ -239,6 +239,65 @@ void SBPLLatticePlanner::publishStats(int solution_cost, int solution_size,
   stats_publisher_.publish(stats);
 }
 
+int SBPLLatticePlanner::checkCost(std::vector<geometry_msgs::PoseStamped> _plan)
+{
+  int cost = 0;
+  for(int i = 0; i < _plan.size(); i++)
+  {
+    geometry_msgs::PoseStamped pose_i = _plan.at(i);
+    int cell_i_x = costmap_ros_->getCostmap()->cellDistance(pose_i.pose.position.x - costmap_ros_->getCostmap()->getOriginX());
+    int cell_i_y = costmap_ros_->getCostmap()->cellDistance(pose_i.pose.position.y - costmap_ros_->getCostmap()->getOriginY());
+    cost += (int)costmap_ros_->getCostmap()->getCost(cell_i_x, cell_i_y);
+  }
+  return cost;
+}
+
+bool SBPLLatticePlanner::compareGoals(geometry_msgs::PoseStamped _last_goal, geometry_msgs::PoseStamped _new_goal)
+{
+  double goal_x_tol = 0.1;
+  double goal_y_tol = 0.1;
+  double goal_t_tol = PI/8;
+
+  double goal_th = 2 * atan2(_new_goal.pose.orientation.z, _new_goal.pose.orientation.w);
+  double last_goal_th = 2 * atan2(_last_goal.pose.orientation.z, _last_goal.pose.orientation.w);
+  double goal_dx = fabs(_last_goal.pose.position.x - _new_goal.pose.position.x);
+  double goal_dy = fabs(_last_goal.pose.position.y - _new_goal.pose.position.y);
+  double goal_dt = fabs(last_goal_th - goal_th);
+  if(goal_dt > PI)
+  {
+    goal_dt = 2*PI - goal_dt;
+  }
+
+  if(goal_dt < goal_t_tol && goal_dx < goal_x_tol && goal_dy < goal_y_tol)
+  {
+    return false;
+  }
+  return true;
+}
+
+bool SBPLLatticePlanner::compareStarts(geometry_msgs::PoseStamped _last_start, geometry_msgs::PoseStamped _new_start)
+{
+  double start_x_tol = 0.4;
+  double start_y_tol = 0.4;
+  double start_t_tol = PI/4;
+
+  double start_th = 2 * atan2(_new_start.pose.orientation.z, _new_start.pose.orientation.w);
+  double last_start_th = 2 * atan2(_last_start.pose.orientation.z, _last_start.pose.orientation.w);
+  double start_dx = fabs(_last_start.pose.position.x - _new_start.pose.position.x);
+  double start_dy = fabs(_last_start.pose.position.y - _new_start.pose.position.y);
+  double start_dt = fabs(last_start_th - start_th);
+  if(start_dt > PI)
+  {
+    start_dt = 2*PI - start_dt;
+  }
+
+  if(start_dt < start_t_tol && start_dx < start_x_tol && start_dy < start_y_tol)
+  {
+    return false;
+  }
+  return true;
+}
+
 bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
                                  const geometry_msgs::PoseStamped& goal,
                                  std::vector<geometry_msgs::PoseStamped>& plan){
