@@ -46,29 +46,29 @@ public:
 
 
   /**
-   * @brief Given a vector of PoseStamped compute the cost
-   * @param _plan The vector of PoseStamped objects
-   * @return Return the cost of the path (according to costmap_ros_)
+   * @brief Given a path compute the cost
+   * @param _plan A vector of PoseStamped objects
+   * @return The total cost of the path (according to costmap_ros_), -1 if the path is invalid
    */
   int checkCost(std::vector<geometry_msgs::PoseStamped> _plan);
 
 
   /**
-   * @brief
-   * @param
-   * @param
-   * @return
+   * @brief Given the last goal and the current goal return true if they are very similar
+   * @param _last_goal The last goal pose
+   * @param _new_goal The new goal pose
+   * @return True if the goals are similar, otherwise false
    */
   bool compareGoals(geometry_msgs::PoseStamped _last_goal, geometry_msgs::PoseStamped _new_goal);
 
 
   /**
-   * @brief
-   * @param
-   * @param
-   * @return
+   * @brief Given the last starting pose return true if still near the last path
+   * @param _last_start The pose of the last starting point
+   * @return True if the last start pose is still close to the path, otherwise false
    */
   bool compareStartToPath(geometry_msgs::PoseStamped _last_start);
+  
   
   /**
    * @brief Given a goal pose in the world, compute a plan
