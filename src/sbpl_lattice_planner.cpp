@@ -103,6 +103,16 @@ void SBPLLatticePlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     private_nh.param("primitive_filename",primitive_filename_,string(""));
     private_nh.param("force_scratch_limit",force_scratch_limit_,500);
 
+    private_nh.param("check_replan",check_replan_,bool(false));
+    private_nh.param("lethal_cost",lethal_cost_,240);
+    private_nh.param("replan_margin",replan_margin_,1.2);
+    private_nh.param("goal_x_tol",goal_x_tol_,0.1);
+    private_nh.param("goal_y_tol",goal_y_tol_,0.1);
+    private_nh.param("goal_t_tol",goal_t_tol_,0.393);
+    private_nh.param("start_x_tol",start_x_tol_,0.4);
+    private_nh.param("start_y_tol",start_y_tol_,0.4);
+    private_nh.param("start_t_tol",start_t_tol_,0.785);
+
     double nominalvel_mpersecs, timetoturn45degsinplace_secs;
     private_nh.param("nominalvel_mpersecs", nominalvel_mpersecs, 0.4);
     private_nh.param("timetoturn45degsinplace_secs", timetoturn45degsinplace_secs, 0.6);
@@ -199,7 +209,6 @@ void SBPLLatticePlanner::initialize(std::string name, costmap_2d::Costmap2DROS* 
     stats_publisher_ = private_nh.advertise<sbpl_lattice_planner::SBPLLatticePlannerStats>("sbpl_lattice_planner_stats", 1);
 
     has_prev_ = false;
-
     initialized_ = true;
   }
 }
@@ -248,7 +257,7 @@ int SBPLLatticePlanner::checkCost(std::vector<geometry_msgs::PoseStamped> _plan)
     int cell_i_x = costmap_ros_->getCostmap()->cellDistance(pose_i.pose.position.x - costmap_ros_->getCostmap()->getOriginX());
     int cell_i_y = costmap_ros_->getCostmap()->cellDistance(pose_i.pose.position.y - costmap_ros_->getCostmap()->getOriginY());
     int cost_i = (int)costmap_ros_->getCostmap()->getCost(cell_i_x, cell_i_y);
-    if(cost_i > 240)
+    if(cost_i > lethal_cost_)
     {
       ROS_DEBUG("Path Invalid Now!");
       return -1;
@@ -263,10 +272,6 @@ int SBPLLatticePlanner::checkCost(std::vector<geometry_msgs::PoseStamped> _plan)
 
 bool SBPLLatticePlanner::compareGoals(geometry_msgs::PoseStamped _last_goal, geometry_msgs::PoseStamped _new_goal)
 {
-  double goal_x_tol = 0.1;
-  double goal_y_tol = 0.1;
-  double goal_t_tol = PI/8;
-
   double goal_th = 2 * atan2(_new_goal.pose.orientation.z, _new_goal.pose.orientation.w);
   double last_goal_th = 2 * atan2(_last_goal.pose.orientation.z, _last_goal.pose.orientation.w);
 
@@ -278,7 +283,7 @@ bool SBPLLatticePlanner::compareGoals(geometry_msgs::PoseStamped _last_goal, geo
     goal_dt = 2*PI - goal_dt;
   }
 
-  if(goal_dt < goal_t_tol && goal_dx < goal_x_tol && goal_dy < goal_y_tol)
+  if(goal_dt < goal_t_tol_ && goal_dx < goal_x_tol_ && goal_dy < goal_y_tol_)
   {
     return true;
   }
@@ -288,10 +293,6 @@ bool SBPLLatticePlanner::compareGoals(geometry_msgs::PoseStamped _last_goal, geo
 
 bool SBPLLatticePlanner::compareStartToPath(geometry_msgs::PoseStamped _last_start)
 {
-  double start_x_tol = 0.4;
-  double start_y_tol = 0.4;
-  double start_t_tol = PI/4;
-
   int indx = -1;
   double dist = 0.0;
   double start_th = 2 * atan2(_last_start.pose.orientation.z, _last_start.pose.orientation.w);
@@ -308,7 +309,7 @@ bool SBPLLatticePlanner::compareStartToPath(geometry_msgs::PoseStamped _last_sta
       start_dt = 2*PI - start_dt;
     }
     // Make sure that point is 'close enough'
-    if(start_dt < start_t_tol && start_dx < start_x_tol && start_dy < start_y_tol)
+    if(start_dt < start_t_tol_ && start_dx < start_x_tol_ && start_dy < start_y_tol_)
     {
       double temp_dist = start_dx*start_dx + start_dy*start_dy;
       if(indx < 0 || temp_dist < dist)
@@ -340,7 +341,7 @@ bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
 
   // If true then need to compare costs
   bool comparePaths;
-  if(has_prev_)
+  if(has_prev_ && check_replan_)
   {
     comparePaths = compareGoals(last_goal_, goal) && compareStartToPath(last_start_); 
   }
@@ -513,7 +514,7 @@ bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
       int new_plan_cost = checkCost(plan);
       if(new_plan_cost >= 0)
       {
-        if(old_path_cost < 0 || new_plan_cost*1.2 < old_path_cost)
+        if(old_path_cost < 0 || new_plan_cost*replan_margin_ < old_path_cost)
         {
           ROS_DEBUG("New plan is cheaper or old plan is now invalid");
           plan_pub_.publish(gui_path);
@@ -538,11 +539,12 @@ bool SBPLLatticePlanner::makePlan(const geometry_msgs::PoseStamped& start,
 
   // //////////////////////////////////////////////
 
-  // plan_pub_.publish(gui_path);
-  // publishStats(solution_cost, sbpl_path.size(), start, goal);
-  last_start_ = start;
-  last_goal_ = goal;
-  last_plan_ = plan;
+  if(check_replan_)
+  {
+    last_start_ = start;
+    last_goal_ = goal;
+    last_plan_ = plan;
+  }
 
   return true;
 }

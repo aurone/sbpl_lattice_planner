@@ -115,6 +115,18 @@ private:
   std::vector<geometry_msgs::PoseStamped> last_plan_;
   bool has_prev_;
 
+  // Parameters
+  bool check_replan_;
+  int lethal_cost_;
+  double replan_margin_;
+  double goal_x_tol_;
+  double goal_y_tol_;
+  double goal_t_tol_;
+  double start_x_tol_;
+  double start_y_tol_;
+  double start_t_tol_;
+  //
+
   costmap_2d::Costmap2DROS* costmap_ros_; /**< manages the cost map for us */
 
   ros::Publisher plan_pub_;
